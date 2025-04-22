@@ -1,0 +1,177 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+// User model converted from Mongoose with role added
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  invoices            Invoice[]
+  purchaseOrders      PurchaseOrder[]
+  stockRegisters      StockRegister[]
+  editRequestsGranted EditRequest[]    @relation("AdminUser")
+  editRequests        EditRequest[]    @relation("RequestingUser")
+  savedSearches       SavedSearch[]
+}
+
+// Product model for Invoice
+model Product {
+  id           String  @id @default(uuid())
+  productName  String
+  serialNumber String?
+  warrantyYears Int     @default(0)
+  quantity     Int
+  price        Float
+  
+  // Relation to Invoice
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId    String
+}
+
+// Invoice model converted from Mongoose with edit permission fields
+model Invoice {
+  id                  String   @id // No default value, will be provided by user
+  purchaseDate        DateTime @default(now())
+  companyName         String
+  orderOrSerialNumber String?
+  vendorName          String
+  contactNumber       String?
+  address             String
+  invoiceFileUrl      String?
+  additionalDetails   String?
+  allowEditing        Boolean  @default(false)
+  editableUntil       DateTime @default(now()) // We'll handle the +24 hours in the controller
+  totalAmount         Float
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  products  Product[]
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  editRequests EditRequest[] @relation("InvoiceEditRequests")
+}
+
+// Item model for PurchaseOrder
+model Item {
+  id          String        @id @default(uuid())
+  description String
+  quantity    Int
+  rate        Float
+  
+  // Relation to PurchaseOrder
+  purchaseOrder      PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  purchaseOrderId    String
+}
+
+// PurchaseOrder model converted from Mongoose with edit permission fields
+model PurchaseOrder {
+  id                   String   @id // No default value, will be provided by user
+  orderDate            DateTime @default(now())
+  fromAddress          String
+  vendorName           String
+  contactNumber        String?
+  gstNumber            String?
+  purchaseOrderNumber  String
+  totalAmount          Float
+  purchaseOrderFileUrl String?
+  allowEditing         Boolean  @default(false)
+  editableUntil        DateTime @default(now()) // We'll handle the +24 hours in the controller
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  items    Item[]
+  user     User    @relation(fields: [userId], references: [id])
+  userId   String
+  editRequests EditRequest[] @relation("PurchaseOrderEditRequests")
+}
+
+// StockRegister model converted from Mongoose with edit permission fields
+model StockRegister {
+  id                 String   @id // No default value, will be provided by user
+  articleName        String
+  entryDate          DateTime @default(now())
+  companyName        String?
+  address            String?
+  productDetails     String?
+  voucherOrBillNumber String
+  costRate           Float
+  cgst               Float    @default(0)
+  sgst               Float    @default(0)
+  totalRate          Float
+  receiptNumber      String?
+  pageNumber         Int?
+  billingDate        DateTime
+  photoUrl           String?
+  allowEditing       Boolean  @default(false)
+  editableUntil      DateTime @default(now()) // We'll handle the +24 hours in the controller
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  user     User    @relation(fields: [userId], references: [id])
+  userId   String
+  editRequests EditRequest[] @relation("StockRegisterEditRequests")
+}
+
+// Model for tracking edit requests
+model EditRequest {
+  id              String   @id @default(uuid())
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestMessage  String?
+  responseMessage String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
+
+  // Relations - one of these will be set based on document type
+  invoiceId       String?
+  purchaseOrderId String?
+  stockRegisterId String?
+  
+  // The user who is requesting the edit
+  requestedBy     User     @relation("RequestingUser", fields: [requestedById], references: [id])
+  requestedById   String
+  
+  // The admin who approved/rejected the request
+  adminUser       User?    @relation("AdminUser", fields: [adminUserId], references: [id])
+  adminUserId     String?
+
+  // Relations to document types
+  invoice         Invoice?  @relation("InvoiceEditRequests", fields: [invoiceId], references: [id], onDelete: Cascade)
+  purchaseOrder   PurchaseOrder? @relation("PurchaseOrderEditRequests", fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  stockRegister   StockRegister? @relation("StockRegisterEditRequests", fields: [stockRegisterId], references: [id], onDelete: Cascade)
+}
+
+// Model for saved searches
+model SavedSearch {
+  id           String   @id @default(uuid())
+  name         String
+  documentType String   // "INVOICE", "PURCHASE_ORDER", or "STOCK_REGISTER"
+  searchParams Json     // Stored as JSON of search parameters
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relation to User
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+}

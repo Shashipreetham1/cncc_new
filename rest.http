@@ -1,0 +1,511 @@
+# CNCC API Testing with REST Client
+# =================================
+
+@baseUrl = http://localhost:3001/api
+@adminToken = {{loginAdmin.response.body.token}}
+@userToken = {{loginUser.response.body.token}}
+@authToken = {{loginAdmin.response.body.token}}
+
+### Variables
+@newUserId = 5f8d0c1e-24cc-4170-9f9d-aa913c8c9532
+@newInvoiceId = INV-2025-04220001
+@newPurchaseOrderId = PO-2025-04220001
+@newStockRegisterId = STK-2025-04220001
+@editRequestId = 6b3c87a9-ef4e-42e7-9b23-17d271cf648f
+
+### -----------------------------
+### Authentication & User Routes
+### -----------------------------
+
+### Register new user
+POST {{baseUrl}}/users/register
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "Test123!",
+  "email": "testuser@example.com"
+}
+
+### Login as regular user
+# @name loginUser
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "username": "testuser", 
+  "password": "Test123!"
+}
+
+### Login as admin
+# @name loginAdmin
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "username": "admin", 
+  "password": "salt"
+}
+
+### Get current user profile
+GET {{baseUrl}}/users/profile
+Authorization: Bearer {{userToken}}
+
+### Register a new user (Admin only)
+POST {{baseUrl}}/users/register
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "username": "newuser",
+  "email": "newuser@example.com",
+  "password": "password123",
+  "role": "USER"
+}
+
+### Get all users (Admin only)
+GET {{baseUrl}}/users
+Authorization: Bearer {{adminToken}}
+
+### Get user by ID
+GET {{baseUrl}}/users/{{newUserId}}
+Authorization: Bearer {{adminToken}}
+
+### Update user
+PUT {{baseUrl}}/users/{{newUserId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "username": "updateduser",
+  "email": "updated@example.com",
+  "role": "USER"
+}
+
+### Delete user
+DELETE {{baseUrl}}/users/{{newUserId}}
+Authorization: Bearer {{adminToken}}
+
+### -----------------------------
+### Invoice Routes
+### -----------------------------
+
+### Create new invoice
+POST {{baseUrl}}/invoices
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "id": "test-invoice-001",
+  "companyName": "Test Company A",
+  "vendorName": "Test Vendor A",
+  "address": "123 Test Street",
+  "totalAmount": 1500,
+  "products": [
+    {
+      "productName": "Test Product A",
+      "serialNumber": "SN-001",
+      "warrantyYears": 2,
+      "quantity": 3,
+      "price": 500
+    }
+  ]
+}
+
+### Get all invoices
+GET {{baseUrl}}/invoices
+Authorization: Bearer {{userToken}}
+
+### Get invoice by ID
+GET {{baseUrl}}/invoices/{{newInvoiceId}}
+Authorization: Bearer {{userToken}}
+
+### Update invoice
+PUT {{baseUrl}}/invoices/{{newInvoiceId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "companyName": "Updated Test Company",
+  "vendorName": "Updated Test Vendor",
+  "address": "456 Updated Street",
+  "totalAmount": 2000,
+  "products": [
+    {
+      "productName": "Updated Test Product",
+      "serialNumber": "SN-001-UPD",
+      "warrantyYears": 3,
+      "quantity": 4,
+      "price": 500
+    }
+  ]
+}
+
+### Delete invoice
+DELETE {{baseUrl}}/invoices/{{newInvoiceId}}
+Authorization: Bearer {{adminToken}}
+
+### Upload invoice file
+POST {{baseUrl}}/invoices/upload
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="test-invoice.pdf"
+Content-Type: application/pdf
+
+< ./path/to/your/test-invoice.pdf
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### -----------------------------
+### Purchase Order Routes
+### -----------------------------
+
+### Create new purchase order
+POST {{baseUrl}}/purchase-orders
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "id": "test-po-001",
+  "fromAddress": "Test From Address",
+  "vendorName": "Test Vendor PO",
+  "purchaseOrderNumber": "PO-001",
+  "totalAmount": 3000,
+  "items": [
+    {
+      "description": "Test Item A",
+      "quantity": 6,
+      "rate": 500,
+      "amount": 3000
+    }
+  ]
+}
+
+### Get all purchase orders
+GET {{baseUrl}}/purchase-orders
+Authorization: Bearer {{userToken}}
+
+### Get purchase order by ID
+GET {{baseUrl}}/purchase-orders/{{newPurchaseOrderId}}
+Authorization: Bearer {{userToken}}
+
+### Update purchase order
+PUT {{baseUrl}}/purchase-orders/{{newPurchaseOrderId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "fromAddress": "Updated From Address",
+  "vendorName": "Updated Vendor PO",
+  "purchaseOrderNumber": "PO-001-UPD",
+  "totalAmount": 4000,
+  "items": [
+    {
+      "description": "Updated Item A",
+      "quantity": 8,
+      "rate": 500,
+      "amount": 4000
+    }
+  ]
+}
+
+### Delete purchase order
+DELETE {{baseUrl}}/purchase-orders/{{newPurchaseOrderId}}
+Authorization: Bearer {{adminToken}}
+
+### Upload purchase order file
+POST {{baseUrl}}/purchase-orders/upload
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="test-po.pdf"
+Content-Type: application/pdf
+
+< ./path/to/your/test-po.pdf
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### -----------------------------
+### Stock Register Routes
+### -----------------------------
+
+### Create new stock register entry
+POST {{baseUrl}}/stock-registers
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "id": "test-stock-001",
+  "articleName": "Test Article",
+  "voucherOrBillNumber": "V-001",
+  "costRate": 1200,
+  "cgst": 120,
+  "sgst": 120,
+  "billingDate": "2025-04-22",
+  "quantity": 2,
+  "costValue": 2400,
+  "companyName": "Test Company Stock",
+  "productDetails": "Test product details"
+}
+
+### Get all stock register entries
+GET {{baseUrl}}/stock-registers
+Authorization: Bearer {{userToken}}
+
+### Get stock register entry by ID
+GET {{baseUrl}}/stock-registers/{{newStockRegisterId}}
+Authorization: Bearer {{userToken}}
+
+### Update stock register entry
+PUT {{baseUrl}}/stock-registers/{{newStockRegisterId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "articleName": "Updated Test Article",
+  "voucherOrBillNumber": "V-001-UPD",
+  "costRate": 1500,
+  "cgst": 150,
+  "sgst": 150,
+  "billingDate": "2025-04-23",
+  "quantity": 3,
+  "costValue": 4500,
+  "companyName": "Updated Test Company Stock",
+  "productDetails": "Updated test product details"
+}
+
+### Delete stock register entry
+DELETE {{baseUrl}}/stock-registers/{{newStockRegisterId}}
+Authorization: Bearer {{adminToken}}
+
+### Upload stock register file
+POST {{baseUrl}}/stock-registers/upload
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="test-stock.pdf"
+Content-Type: application/pdf
+
+< ./path/to/your/test-stock.pdf
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### -----------------------------
+### Search Routes
+### -----------------------------
+
+### Search invoices by company name
+POST {{baseUrl}}/search/invoice
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "companyName": "Test Company"
+}
+
+### Search invoices by vendor name
+POST {{baseUrl}}/search/invoice
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "vendorName": "Test Vendor"
+}
+
+### Search invoices by date range
+POST {{baseUrl}}/search/invoice
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "dateFrom": "2025-04-01",
+  "dateTo": "2025-04-30"
+}
+
+### Search invoices by amount range
+POST {{baseUrl}}/search/invoice
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "minAmount": 1000,
+  "maxAmount": 2000
+}
+
+### Search invoices by product name
+POST {{baseUrl}}/search/invoice
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "productName": "Test Product"
+}
+
+### Search purchase orders by vendor name
+POST {{baseUrl}}/search/purchase-order
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "vendorName": "Test Vendor"
+}
+
+### Search stock register entries by company name
+POST {{baseUrl}}/search/stock-register
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "companyName": "Test Company"
+}
+
+### Search across all document types
+POST {{baseUrl}}/search/all
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "query": "Test"
+}
+
+### Get saved searches
+GET {{baseUrl}}/saved-searches
+Authorization: Bearer {{userToken}}
+
+### Save a search
+POST {{baseUrl}}/saved-searches
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "name": "My Test Search",
+  "searchType": "invoice",
+  "criteria": {
+    "companyName": "Test Company",
+    "minAmount": 1000
+  }
+}
+
+### Execute saved search by ID
+GET {{baseUrl}}/saved-searches/execute/1
+Authorization: Bearer {{userToken}}
+
+### Delete saved search
+DELETE {{baseUrl}}/saved-searches/1
+Authorization: Bearer {{userToken}}
+
+### -----------------------------
+### Edit Request Routes
+### -----------------------------
+
+### Create edit request
+POST {{baseUrl}}/edit-requests
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "documentType": "invoice",
+  "documentId": "test-invoice-001",
+  "requestDetails": "Please change the company name to 'New Company Name'",
+  "proposedChanges": {
+    "companyName": "New Company Name"
+  }
+}
+
+### Get all edit requests
+GET {{baseUrl}}/edit-requests
+Authorization: Bearer {{adminToken}}
+
+### Get edit request by ID
+GET {{baseUrl}}/edit-requests/{{editRequestId}}
+Authorization: Bearer {{adminToken}}
+
+### Approve edit request
+PUT {{baseUrl}}/edit-requests/{{editRequestId}}/approve
+Authorization: Bearer {{adminToken}}
+
+### Reject edit request
+PUT {{baseUrl}}/edit-requests/{{editRequestId}}/reject
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "rejectionReason": "Information is incorrect"
+}
+
+### Get edit request status by document ID
+GET {{baseUrl}}/edit-requests/status/invoice/test-invoice-001
+Authorization: Bearer {{userToken}}
+
+### Request edit permission for invoice
+POST {{baseUrl}}/edit-requests/invoice/invoice-id-here
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "requestMessage": "Need to update invoice details"
+}
+
+### Request edit permission for purchase order
+POST {{baseUrl}}/edit-requests/purchase-order/po-id-here
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "requestMessage": "Need to update purchase order details"
+}
+
+### Request edit permission for stock register
+POST {{baseUrl}}/edit-requests/stock-register/stock-id-here
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "requestMessage": "Need to update stock register details"
+}
+
+### Get all edit requests (Admin only)
+GET {{baseUrl}}/edit-requests
+Authorization: Bearer {{authToken}}
+
+### Approve edit request (Admin only)
+PUT {{baseUrl}}/edit-requests/request-id-here/approve
+Authorization: Bearer {{authToken}}
+
+### Reject edit request (Admin only)
+PUT {{baseUrl}}/edit-requests/request-id-here/reject
+Authorization: Bearer {{authToken}}
+
+### Create a saved search
+POST {{baseUrl}}/searches/save
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "name": "Test Search",
+  "type": "INVOICE",
+  "criteria": {
+    "companyName": "Test Company",
+    "dateFrom": "2025-04-22",
+    "dateTo": "2025-04-22"
+  }
+}
+
+### Get all saved searches
+GET {{baseUrl}}/searches/saved
+Authorization: Bearer {{authToken}}
+
+### Execute advanced search
+POST {{baseUrl}}/searches
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "type": "INVOICE",
+  "criteria": {
+    "companyName": "Test Company",
+    "dateFrom": "2025-01-01",
+    "dateTo": "2025-04-22"
+  }
+}
