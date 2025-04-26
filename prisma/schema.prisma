@@ -8,170 +8,213 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+  // Use Prisma relation mode if foreign keys aren't managed by DB (e.g., PlanetScale)
+  // relationMode = "prisma"
 }
 
+// Define reusable Enums
 enum Role {
   ADMIN
   USER
 }
 
-// User model converted from Mongoose with role added
+enum DocumentType {
+  INVOICE
+  PURCHASE_ORDER
+  STOCK_REGISTER
+}
+
+enum EditRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// --- Models ---
+
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String        @id @default(uuid())
+  username            String        @unique
+  password            String
+  // email            String?       @unique // Email removed as requested
+  role                Role          @default(USER)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   // Relations
   invoices            Invoice[]
   purchaseOrders      PurchaseOrder[]
   stockRegisters      StockRegister[]
-  editRequestsGranted EditRequest[]    @relation("AdminUser")
-  editRequests        EditRequest[]    @relation("RequestingUser")
+  editRequestsGranted EditRequest[] @relation("AdminUser")     // Edits approved/rejected BY this admin
+  editRequestsMade    EditRequest[] @relation("RequestingUser") // Edits requested BY this user
   savedSearches       SavedSearch[]
+
+  @@map("users")
 }
 
-// Product model for Invoice
 model Product {
-  id           String  @id @default(uuid())
-  productName  String
-  serialNumber String?
-  warrantyYears Int     @default(0)
-  quantity     Int
-  price        Float
-  
-  // Relation to Invoice
-  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  invoiceId    String
+  id            String   @id @default(uuid())
+  productName   String
+  serialNumber  String?
+  warrantyYears Int      @default(0)
+  quantity      Int
+  price         Float
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String  @map("invoice_id")
+
+  @@index([invoiceId])
+  @@map("products")
 }
 
-// Invoice model converted from Mongoose with edit permission fields
 model Invoice {
-  id                  String   @id // No default value, will be provided by user
-  purchaseDate        DateTime @default(now())
+  id                  String    @id // User-provided ID
+  purchaseDate        DateTime
   companyName         String
-  orderOrSerialNumber String?
+  orderOrSerialNumber String?   @map("order_or_serial_number")
   vendorName          String
   contactNumber       String?
-  address             String
-  invoiceFileUrl      String?
-  additionalDetails   String?
-  allowEditing        Boolean  @default(false)
-  editableUntil       DateTime @default(now()) // We'll handle the +24 hours in the controller
-  totalAmount         Float
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  address             String    @db.Text
+  invoiceFileUrl      String?   @map("invoice_file_url") // Relative path to file
+  additionalDetails   String?   @db.Text
+  allowEditing        Boolean   @default(false) @map("allow_editing") // Is editing currently permitted?
+  editableUntil       DateTime?                 // Timestamp until admin-granted permission expires
+  totalAmount         Float     @map("total_amount")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  // Relations
-  products  Product[]
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
+  products     Product[]
+  user         User      @relation(fields: [userId], references: [id], onDelete: Restrict) // Don't delete user if they have invoices
+  userId       String    @map("user_id")
   editRequests EditRequest[] @relation("InvoiceEditRequests")
+
+  @@index([userId])
+  @@index([purchaseDate])
+  @@index([vendorName])
+  @@index([companyName])
+  @@map("invoices")
 }
 
-// Item model for PurchaseOrder
 model Item {
-  id          String        @id @default(uuid())
-  description String
-  quantity    Int
-  rate        Float
-  
-  // Relation to PurchaseOrder
-  purchaseOrder      PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  purchaseOrderId    String
+  id              String        @id @default(uuid())
+  description     String        @db.Text
+  quantity        Int
+  rate            Float
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  purchaseOrderId String        @map("purchase_order_id")
+
+  @@index([purchaseOrderId])
+  @@map("items")
 }
 
-// PurchaseOrder model converted from Mongoose with edit permission fields
 model PurchaseOrder {
-  id                   String   @id // No default value, will be provided by user
-  orderDate            DateTime @default(now())
-  fromAddress          String
+  id                   String    @id // User-provided ID
+  orderDate            DateTime
+  fromAddress          String    @db.Text @map("from_address")
   vendorName           String
   contactNumber        String?
-  gstNumber            String?
-  purchaseOrderNumber  String
-  totalAmount          Float
-  purchaseOrderFileUrl String?
-  allowEditing         Boolean  @default(false)
-  editableUntil        DateTime @default(now()) // We'll handle the +24 hours in the controller
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  gstNumber            String?   @map("gst_number")
+  purchaseOrderNumber  String    @unique @map("purchase_order_number")
+  totalAmount          Float     @map("total_amount")
+  purchaseOrderFileUrl String?   @map("purchase_order_file_url")
+  allowEditing         Boolean   @default(false) @map("allow_editing")
+  editableUntil        DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  // Relations
-  items    Item[]
-  user     User    @relation(fields: [userId], references: [id])
-  userId   String
+  items        Item[]
+  user         User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId       String    @map("user_id")
   editRequests EditRequest[] @relation("PurchaseOrderEditRequests")
+
+  @@index([userId])
+  @@index([orderDate])
+  @@index([vendorName])
+  @@map("purchase_orders")
 }
 
-// StockRegister model converted from Mongoose with edit permission fields
 model StockRegister {
-  id                 String   @id // No default value, will be provided by user
-  articleName        String
-  entryDate          DateTime @default(now())
-  companyName        String?
-  address            String?
-  productDetails     String?
+  id                  String    @id // User-provided ID
+  articleName         String
+  entryDate           DateTime  @default(now())
+  companyName         String?
+  address             String?   @db.Text
+  productDetails      String?   @db.Text
   voucherOrBillNumber String
-  costRate           Float
-  cgst               Float    @default(0)
-  sgst               Float    @default(0)
-  totalRate          Float
-  receiptNumber      String?
-  pageNumber         Int?
-  billingDate        DateTime
-  photoUrl           String?
-  allowEditing       Boolean  @default(false)
-  editableUntil      DateTime @default(now()) // We'll handle the +24 hours in the controller
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  costRate            Float
+  cgst                Float     @default(0)
+  sgst                Float     @default(0)
+  totalRate           Float     // Note: This should be calculated & stored on write operations
+  receiptNumber       String?
+  pageNumber          Int?
+  billingDate         DateTime
+  photoUrl            String?   @map("photo_url")
+  allowEditing        Boolean   @default(false) @map("allow_editing")
+  editableUntil       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  // Relations
-  user     User    @relation(fields: [userId], references: [id])
-  userId   String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId       String    @map("user_id")
   editRequests EditRequest[] @relation("StockRegisterEditRequests")
+
+  @@index([userId])
+  @@index([entryDate])
+  @@index([articleName])
+  @@map("stock_register_entries")
 }
 
-// Model for tracking edit requests
 model EditRequest {
-  id              String   @id @default(uuid())
-  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  requestMessage  String?
-  responseMessage String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @default(now())
+  id              String            @id @default(uuid())
+  status          EditRequestStatus @default(PENDING)
+  requestMessage  String?           @db.Text
+  responseMessage String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  // Relations - one of these will be set based on document type
-  invoiceId       String?
-  purchaseOrderId String?
-  stockRegisterId String?
-  
-  // The user who is requesting the edit
-  requestedBy     User     @relation("RequestingUser", fields: [requestedById], references: [id])
-  requestedById   String
-  
-  // The admin who approved/rejected the request
-  adminUser       User?    @relation("AdminUser", fields: [adminUserId], references: [id])
-  adminUserId     String?
+  // Foreign keys for the single document this request applies to
+  invoiceId       String?           @unique @map("invoice_id")
+  purchaseOrderId String?           @unique @map("purchase_order_id")
+  stockRegisterId String?           @unique @map("stock_register_id")
 
-  // Relations to document types
-  invoice         Invoice?  @relation("InvoiceEditRequests", fields: [invoiceId], references: [id], onDelete: Cascade)
-  purchaseOrder   PurchaseOrder? @relation("PurchaseOrderEditRequests", fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  stockRegister   StockRegister? @relation("StockRegisterEditRequests", fields: [stockRegisterId], references: [id], onDelete: Cascade)
+  // Relation to requesting user
+  requestedBy     User              @relation("RequestingUser", fields: [requestedById], references: [id], onDelete: Cascade)
+  requestedById   String            @map("requested_by_id")
+
+  // Relation to processing admin (optional)
+  adminUser       User?             @relation("AdminUser", fields: [adminUserId], references: [id], onDelete: SetNull) // Keep record if admin deleted
+  adminUserId     String?           @map("admin_user_id")
+
+  // Relations back to document types (used for include/cascades)
+  invoice         Invoice?          @relation("InvoiceEditRequests", fields: [invoiceId], references: [id], onDelete: Cascade)
+  purchaseOrder   PurchaseOrder?    @relation("PurchaseOrderEditRequests", fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  stockRegister   StockRegister?    @relation("StockRegisterEditRequests", fields: [stockRegisterId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([requestedById])
+  @@index([adminUserId])
+  @@map("edit_requests")
 }
 
-// Model for saved searches
-model SavedSearch {
-  id           String   @id @default(uuid())
-  name         String
-  documentType String   // "INVOICE", "PURCHASE_ORDER", or "STOCK_REGISTER"
-  searchParams Json     // Stored as JSON of search parameters
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  // Relation to User
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       String
+model SavedSearch {
+  id           String       @id @default(uuid())
+  name         String
+  documentType DocumentType // Use the Enum
+  searchParams Json         // Criteria stored as JSON: { "field": "value", "minAmount": 100 }
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String       @map("user_id")
+
+  // Prevent a user from having two saved searches with the exact same name
+  @@unique([userId, name], name: "unique_user_search_name")
+  @@index([userId])
+  @@map("saved_searches")
 }

@@ -1,511 +1,583 @@
-# CNCC API Testing with REST Client
-# =================================
+#################################################################
+# CNCC Backend API Test File (for VS Code REST Client)
+#
+# Instructions:
+# 1. Ensure backend server is running (npm run dev)
+# 2. Execute requests sequentially or individually using "Send Request".
+# 3. Run "Login as admin" and "Login as user" first to get tokens.
+# 4. Create resources (Invoice, PO, Stock) before trying to get/update/delete them.
+# 5. Update dummy file paths in upload sections if needed.
+#
+#################################################################
 
+### Variables Block ###
 @baseUrl = http://localhost:3001/api
+@adminUsername = admin
+@adminPassword = admin123
+@testUsername = testuser{{$r123}} # Use random int to avoid collisions on re-runs
+@testPassword = password123
+
+# Dynamic Variables (populated by login responses)
 @adminToken = {{loginAdmin.response.body.token}}
-@userToken = {{loginUser.response.body.token}}
-@authToken = {{loginAdmin.response.body.token}}
+@userToken = {{loginTestUser.response.body.token}}
 
-### Variables
-@newUserId = 5f8d0c1e-24cc-4170-9f9d-aa913c8c9532
-@newInvoiceId = INV-2025-04220001
-@newPurchaseOrderId = PO-2025-04220001
-@newStockRegisterId = STK-2025-04220001
-@editRequestId = 6b3c87a9-ef4e-42e7-9b23-17d271cf648f
+# Dynamic Variables (populated by resource creation responses)
+@newUserId = {{registerNewUser.response.body.id}}
+@newInvoiceId = {{createInvoice.response.body.id}}
+@newPurchaseOrderId = {{createPO.response.body.id}}
+@newStockRegisterId = {{createStock.response.body.id}}
+@invoiceEditRequestId = {{requestInvoiceEdit.response.body.editRequest.id}}
+@poEditRequestId = {{requestPOEdit.response.body.editRequest.id}}
+@stockEditRequestId = {{requestStockEdit.response.body.editRequest.id}}
+@savedSearchId = {{createSavedSearch.response.body.savedSearch.id}}
 
-### -----------------------------
-### Authentication & User Routes
-### -----------------------------
+### File Paths (Create these dummy files) ###
+@invoiceFilePath = ./dummy-invoice.pdf
+@poFilePath = ./dummy-po.pdf
+@stockPhotoPath = ./dummy-photo.jpg
 
-### Register new user
-POST {{baseUrl}}/users/register
-Content-Type: application/json
+### --- Authentication & User Management --- ###
 
-{
-  "username": "testuser",
-  "password": "Test123!",
-  "email": "testuser@example.com"
-}
-
-### Login as regular user
-# @name loginUser
-POST {{baseUrl}}/users/login
-Content-Type: application/json
-
-{
-  "username": "testuser", 
-  "password": "Test123!"
-}
-
-### Login as admin
+# 1. Login as the seeded admin user to get an admin token
 # @name loginAdmin
 POST {{baseUrl}}/users/login
 Content-Type: application/json
 
 {
-  "username": "admin", 
-  "password": "salt"
+  "username": "{{adminUsername}}",
+  "password": "{{adminPassword}}"
 }
 
-### Get current user profile
-GET {{baseUrl}}/users/profile
-Authorization: Bearer {{userToken}}
-
-### Register a new user (Admin only)
+### -----------------------------------------
+# Needs admin token from above!
+# 2. Register a new regular user (Admin only)
+# @name registerNewUser
 POST {{baseUrl}}/users/register
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 {
-  "username": "newuser",
-  "email": "newuser@example.com",
-  "password": "password123",
+  "username": "{{testUsername}}",
+  "password": "{{testPassword}}",
   "role": "USER"
 }
 
-### Get all users (Admin only)
-GET {{baseUrl}}/users
-Authorization: Bearer {{adminToken}}
-
-### Get user by ID
-GET {{baseUrl}}/users/{{newUserId}}
-Authorization: Bearer {{adminToken}}
-
-### Update user
-PUT {{baseUrl}}/users/{{newUserId}}
-Authorization: Bearer {{adminToken}}
+### -----------------------------------------
+# Needs successful user registration above!
+# 3. Login as the newly created regular user
+# @name loginTestUser
+POST {{baseUrl}}/users/login
 Content-Type: application/json
 
 {
-  "username": "updateduser",
-  "email": "updated@example.com",
-  "role": "USER"
+  "username": "{{testUsername}}",
+  "password": "{{testPassword}}"
 }
 
-### Delete user
-DELETE {{baseUrl}}/users/{{newUserId}}
+### -----------------------------------------
+# Needs user token from above!
+# 4. Get current user's profile
+GET {{baseUrl}}/users/profile
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs admin token!
+# 5. Get all users (Admin only)
+GET {{baseUrl}}/users?page=1&limit=5&sortBy=username&sortOrder=asc
 Authorization: Bearer {{adminToken}}
 
-### -----------------------------
-### Invoice Routes
-### -----------------------------
+### -----------------------------------------
+# Needs admin token and user ID!
+# 6. Promote the test user to Admin (Admin only)
+PUT {{baseUrl}}/users/promote/{{newUserId}}
+Authorization: Bearer {{adminToken}}
 
-### Create new invoice
+### --- Invoice Routes --- ###
+
+# 7. Create a new invoice (Requires user token)
+# @name createInvoice
 POST {{baseUrl}}/invoices
 Authorization: Bearer {{userToken}}
 Content-Type: application/json
 
 {
-  "id": "test-invoice-001",
-  "companyName": "Test Company A",
-  "vendorName": "Test Vendor A",
-  "address": "123 Test Street",
-  "totalAmount": 1500,
+  "id": "INV-{{$timestamp}}",
+  "purchaseDate": "2024-05-20T10:00:00Z",
+  "companyName": "Test Client Inc.",
+  "orderOrSerialNumber": "SN-ABC-{{$randomInt}}",
+  "vendorName": "Reliable Supplies",
+  "contactNumber": "555-111-2222",
+  "address": "100 Main St, Anytown",
+  "additionalDetails": "Initial purchase of office gear.",
+  "totalAmount": 750.99,
   "products": [
     {
-      "productName": "Test Product A",
-      "serialNumber": "SN-001",
-      "warrantyYears": 2,
+      "productName": "Office Chair",
+      "serialNumber": "CHAIR-{{$randomInt}}",
+      "warrantyYears": 1,
+      "quantity": 2,
+      "price": 150.50
+    },
+    {
+      "productName": "Desk Lamp",
+      "serialNumber": null,
+      "warrantyYears": 0,
       "quantity": 3,
-      "price": 500
+      "price": 83.33
     }
   ]
 }
 
-### Get all invoices
-GET {{baseUrl}}/invoices
+### -----------------------------------------
+# Needs user token!
+# 8. Get all invoices (visible to the logged-in user)
+GET {{baseUrl}}/invoices?limit=5&sortBy=purchaseDate&sortOrder=desc
 Authorization: Bearer {{userToken}}
 
-### Get invoice by ID
+### -----------------------------------------
+# Needs user token and an invoice ID from Create Invoice!
+# 9. Get specific invoice by ID
 GET {{baseUrl}}/invoices/{{newInvoiceId}}
 Authorization: Bearer {{userToken}}
 
-### Update invoice
+### -----------------------------------------
+# Needs user token and an invoice ID!
+# Might fail after 24hrs unless edit approved
+# Note: Does NOT upload file here, only updates data.
+# @name updateInvoiceData
 PUT {{baseUrl}}/invoices/{{newInvoiceId}}
 Authorization: Bearer {{userToken}}
 Content-Type: application/json
 
 {
-  "companyName": "Updated Test Company",
-  "vendorName": "Updated Test Vendor",
-  "address": "456 Updated Street",
-  "totalAmount": 2000,
+  "purchaseDate": "2024-05-21T11:30:00Z",
+  "companyName": "Test Client Inc. (Updated)",
+  "vendorName": "Reliable Supplies Co.",
+  "contactNumber": "555-111-3333",
+  "address": "101 Main St, Anytown",
+  "additionalDetails": "Updated invoice with new item.",
+  "totalAmount": 950.99,
   "products": [
     {
-      "productName": "Updated Test Product",
-      "serialNumber": "SN-001-UPD",
-      "warrantyYears": 3,
-      "quantity": 4,
-      "price": 500
+      "productName": "Office Chair DELUXE",
+      "serialNumber": "CHAIR-{{$randomInt}}-DX",
+      "warrantyYears": 2,
+      "quantity": 2,
+      "price": 200.50
+    },
+    {
+      "productName": "Monitor Stand",
+      "serialNumber": "STAND-{{$randomInt}}",
+      "warrantyYears": 0,
+      "quantity": 1,
+      "price": 50.00
     }
   ]
 }
 
-### Delete invoice
-DELETE {{baseUrl}}/invoices/{{newInvoiceId}}
-Authorization: Bearer {{adminToken}}
-
-### Upload invoice file
-POST {{baseUrl}}/invoices/upload
+### -----------------------------------------
+# Needs user token and an invoice ID!
+# Test: Request edit permission after initial window (or if already failed)
+# @name requestInvoiceEdit
+POST {{baseUrl}}/invoices/{{newInvoiceId}}/request-edit
 Authorization: Bearer {{userToken}}
-Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Type: application/json
 
-------WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="file"; filename="test-invoice.pdf"
-Content-Type: application/pdf
+{
+  "requestMessage": "Need to correct the product quantity for invoice {{newInvoiceId}}"
+}
 
-< ./path/to/your/test-invoice.pdf
-------WebKitFormBoundary7MA4YWxkTrZu0gW--
+### -----------------------------------------
+# Needs admin token and invoice ID!
+# Test: Delete an invoice (Admin only needed if not owner)
+DELETE {{baseUrl}}/invoices/{{newInvoiceId}}
+Authorization: Bearer {{adminToken}} # Or userToken if owned by testUser and within time/approved
 
-### -----------------------------
-### Purchase Order Routes
-### -----------------------------
+### --- Purchase Order Routes --- ###
 
-### Create new purchase order
+# 10. Create a new Purchase Order (Requires user token)
+# @name createPO
 POST {{baseUrl}}/purchase-orders
 Authorization: Bearer {{userToken}}
 Content-Type: application/json
 
 {
-  "id": "test-po-001",
-  "fromAddress": "Test From Address",
-  "vendorName": "Test Vendor PO",
-  "purchaseOrderNumber": "PO-001",
-  "totalAmount": 3000,
+  "id": "PO-{{$timestamp}}",
+  "orderDate": "2024-05-15T09:00:00Z",
+  "fromAddress": "456 Warehouse Ave",
+  "vendorName": "Bulk Goods Ltd.",
+  "contactNumber": "555-888-9999",
+  "gstNumber": "GSTIN12345PO",
+  "purchaseOrderNumber": "PO-{{$guid}}",
+  "totalAmount": 1200.00,
   "items": [
     {
-      "description": "Test Item A",
-      "quantity": 6,
-      "rate": 500,
-      "amount": 3000
+      "description": "Widget Type A",
+      "quantity": 100,
+      "rate": 5.50
+    },
+    {
+      "description": "Gadget Type B",
+      "quantity": 50,
+      "rate": 13.00
     }
   ]
 }
 
-### Get all purchase orders
-GET {{baseUrl}}/purchase-orders
+### -----------------------------------------
+# Needs user token!
+# 11. Get all purchase orders (visible to the user)
+GET {{baseUrl}}/purchase-orders?limit=5
 Authorization: Bearer {{userToken}}
 
-### Get purchase order by ID
+### -----------------------------------------
+# Needs user token and a PO ID from Create PO!
+# 12. Get specific purchase order by ID
 GET {{baseUrl}}/purchase-orders/{{newPurchaseOrderId}}
 Authorization: Bearer {{userToken}}
 
-### Update purchase order
+### -----------------------------------------
+# Needs user token and a PO ID!
+# Might fail after 24hrs unless edit approved
+# @name updatePOData
 PUT {{baseUrl}}/purchase-orders/{{newPurchaseOrderId}}
 Authorization: Bearer {{userToken}}
 Content-Type: application/json
 
 {
-  "fromAddress": "Updated From Address",
-  "vendorName": "Updated Vendor PO",
-  "purchaseOrderNumber": "PO-001-UPD",
-  "totalAmount": 4000,
+  "orderDate": "2024-05-16T09:30:00Z",
+  "fromAddress": "456 Warehouse Ave, Updated",
+  "vendorName": "Bulk Goods International",
+  "purchaseOrderNumber": "{{newPurchaseOrderId}}-Rev1",
+  "totalAmount": 1300.00,
   "items": [
     {
-      "description": "Updated Item A",
-      "quantity": 8,
-      "rate": 500,
-      "amount": 4000
+      "description": "Widget Type A (Improved)",
+      "quantity": 100,
+      "rate": 6.00
+    },
+    {
+      "description": "Gadget Type C",
+      "quantity": 50,
+      "rate": 14.00
     }
   ]
 }
 
-### Delete purchase order
+### -----------------------------------------
+# Needs user token and PO ID!
+# Test: Request edit permission for PO
+# @name requestPOEdit
+POST {{baseUrl}}/purchase-orders/{{newPurchaseOrderId}}/request-edit
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "requestMessage": "Update needed for PO {{newPurchaseOrderId}} delivery address."
+}
+
+### -----------------------------------------
+# Needs admin/owner token and PO ID!
+# Test: Delete a purchase order
 DELETE {{baseUrl}}/purchase-orders/{{newPurchaseOrderId}}
 Authorization: Bearer {{adminToken}}
 
-### Upload purchase order file
-POST {{baseUrl}}/purchase-orders/upload
-Authorization: Bearer {{userToken}}
-Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+### --- Stock Register Routes --- ###
 
-------WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="file"; filename="test-po.pdf"
+# 13. Create a new stock register entry (Requires user token)
+# @name createStock
+POST {{baseUrl}}/stock-register
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "id": "STK-{{$timestamp}}",
+  "articleName": "Component Z",
+  "entryDate": "2024-05-01T00:00:00Z",
+  "companyName": "Internal Stock",
+  "address": "Shelf 4B, Zone 1",
+  "productDetails": "Standard Z-type component",
+  "voucherOrBillNumber": "IN-STOCK-{{$randomInt}}",
+  "costRate": 25.50,
+  "cgst": 2.30,
+  "sgst": 2.30,
+  "receiptNumber": "REC-{{$randomInt}}",
+  "pageNumber": 101,
+  "billingDate": "2024-05-01T00:00:00Z"
+}
+
+### -----------------------------------------
+# Needs user token!
+# 14. Get all stock register entries (visible to user)
+GET {{baseUrl}}/stock-register?limit=5
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token and a Stock ID from Create Stock!
+# 15. Get specific stock register entry by ID
+GET {{baseUrl}}/stock-register/{{newStockRegisterId}}
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token and a Stock ID!
+# Might fail after 24hrs unless edit approved
+# @name updateStockData
+PUT {{baseUrl}}/stock-register/{{newStockRegisterId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "articleName": "Component Z (Rev. 2)",
+  "address": "Shelf 5A, Zone 2",
+  "productDetails": "Standard Z-type component - Revision 2",
+  "costRate": 26.00,
+  "cgst": 2.34,
+  "sgst": 2.34,
+  "billingDate": "2024-05-02T00:00:00Z"
+}
+
+### -----------------------------------------
+# Needs user token and Stock ID!
+# Test: Request edit permission for Stock Register
+# @name requestStockEdit
+POST {{baseUrl}}/stock-register/{{newStockRegisterId}}/request-edit
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "requestMessage": "Need to correct the costRate for stock item {{newStockRegisterId}}"
+}
+
+### -----------------------------------------
+# Needs admin/owner token and Stock ID!
+# Test: Delete a stock register entry
+DELETE {{baseUrl}}/stock-register/{{newStockRegisterId}}
+Authorization: Bearer {{adminToken}}
+
+
+### --- Edit Request Management (Admin Only) --- ###
+
+# 16. Get PENDING edit requests (Requires admin token)
+GET {{baseUrl}}/edit-requests?status=PENDING&limit=10
+Authorization: Bearer {{adminToken}}
+
+### -----------------------------------------
+# Needs admin token! Get ALL status requests
+GET {{baseUrl}}/edit-requests?status=ALL&limit=10
+Authorization: Bearer {{adminToken}}
+
+### -----------------------------------------
+# Needs admin token and an EDIT REQUEST ID (e.g., from requestInvoiceEdit response)!
+# Test: Get a specific edit request
+GET {{baseUrl}}/edit-requests/{{invoiceEditRequestId}}
+Authorization: Bearer {{adminToken}}
+
+### -----------------------------------------
+# Needs admin token and an EDIT REQUEST ID!
+# Test: Approve an edit request
+PUT {{baseUrl}}/edit-requests/{{invoiceEditRequestId}}/approve
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "responseMessage": "Approved. You now have 24 hours to edit the invoice."
+}
+
+### -----------------------------------------
+# Needs admin token and a DIFFERENT PENDING EDIT REQUEST ID (e.g., from requestPOEdit)!
+# Test: Reject an edit request
+PUT {{baseUrl}}/edit-requests/{{poEditRequestId}}/reject
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "responseMessage": "Rejected. Insufficient detail provided in request."
+}
+
+### --- Search & Saved Search Routes --- ###
+
+# 17. Validate ID Uniqueness (Requires user token)
+POST {{baseUrl}}/search/validate-id
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "id": "PO-{{$timestamp}}-check",
+  "type": "purchaseOrder"
+}
+
+### -----------------------------------------
+# Needs user token!
+# 18. Basic search across all types
+GET {{baseUrl}}/search?query=Test&limit=5
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token!
+# 19. Basic search for specific type
+GET {{baseUrl}}/search?query=Widget&type=purchaseOrder
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token!
+# 20. Advanced Invoice Search
+GET {{baseUrl}}/search/advanced/invoices?vendorName=Reliable&minAmount=500&limit=5
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token!
+# 21. Advanced PO Search
+GET {{baseUrl}}/search/advanced/purchase-orders?itemDescription=Gadget&dateFrom=2024-05-01
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token!
+# 22. Advanced Stock Register Search
+GET {{baseUrl}}/search/advanced/stock-register?articleName=Component&minCostRate=25
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token!
+# 23. Create a Saved Search
+# @name createSavedSearch
+POST {{baseUrl}}/search/saved
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "name": "High Value POs Q2",
+  "documentType": "PURCHASE_ORDER",
+  "searchParams": {
+    "minAmount": "1000",
+    "dateFrom": "2024-04-01"
+  }
+}
+
+### -----------------------------------------
+# Needs user token!
+# 24. Get User's Saved Searches
+GET {{baseUrl}}/search/saved?documentType=PURCHASE_ORDER
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token and a saved search ID!
+# 25. Get specific Saved Search
+GET {{baseUrl}}/search/saved/{{savedSearchId}}
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token and a saved search ID!
+# 26. Update Saved Search
+PUT {{baseUrl}}/search/saved/{{savedSearchId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "name": "High Value POs Q2 (Updated Name)",
+  "searchParams": {
+     "minAmount": "1100",
+     "dateFrom": "2024-04-01",
+     "vendorName": "Bulk Goods"
+  }
+}
+
+### -----------------------------------------
+# Needs user token and a saved search ID!
+# 27. Delete Saved Search
+DELETE {{baseUrl}}/search/saved/{{savedSearchId}}
+Authorization: Bearer {{userToken}}
+
+### -----------------------------------------
+# Needs user token!
+# 28. Export Advanced Invoice Search Results as CSV
+GET {{baseUrl}}/search/export?type=invoice&format=csv&vendorName=Reliable&minAmount=500
+Authorization: Bearer {{userToken}}
+
+### --- File Upload Examples (Multipart) --- ###
+
+# IMPORTANT: Update file path < ./path/to/... below
+# Ensure Content-Type includes a boundary that is used in the body.
+
+### -----------------------------------------
+# Upload file when CREATING an invoice (also send other fields)
+# Needs user token!
+# @name createInvoiceWithFile
+POST {{baseUrl}}/invoices
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data; boundary=----MyBoundary
+
+------MyBoundary
+Content-Disposition: form-data; name="id"
+
+INV-FILE-{{$timestamp}}
+------MyBoundary
+Content-Disposition: form-data; name="purchaseDate"
+
+2024-05-22T12:00:00Z
+------MyBoundary
+Content-Disposition: form-data; name="companyName"
+
+Company With File Upload
+------MyBoundary
+Content-Disposition: form-data; name="vendorName"
+
+Vendor With File Upload
+------MyBoundary
+Content-Disposition: form-data; name="address"
+
+789 File St
+------MyBoundary
+Content-Disposition: form-data; name="totalAmount"
+
+199.99
+------MyBoundary
+Content-Disposition: form-data; name="products"
+
+[{"productName": "File Product","quantity": 1,"price": 199.99}]
+------MyBoundary
+Content-Disposition: form-data; name="invoiceFile"; filename="dummy-invoice.pdf"
 Content-Type: application/pdf
 
-< ./path/to/your/test-po.pdf
-------WebKitFormBoundary7MA4YWxkTrZu0gW--
+< {{invoiceFilePath}}
+------MyBoundary--
 
-### -----------------------------
-### Stock Register Routes
-### -----------------------------
-
-### Create new stock register entry
-POST {{baseUrl}}/stock-registers
+### -----------------------------------------
+# Upload file when UPDATING an invoice (replace existing file)
+# Needs user token and ID from createInvoiceWithFile!
+# Might fail after 24hrs unless approved.
+PUT {{baseUrl}}/invoices/{{createInvoiceWithFile.response.body.id}}
 Authorization: Bearer {{userToken}}
-Content-Type: application/json
+Content-Type: multipart/form-data; boundary=----MyBoundary
 
-{
-  "id": "test-stock-001",
-  "articleName": "Test Article",
-  "voucherOrBillNumber": "V-001",
-  "costRate": 1200,
-  "cgst": 120,
-  "sgst": 120,
-  "billingDate": "2025-04-22",
-  "quantity": 2,
-  "costValue": 2400,
-  "companyName": "Test Company Stock",
-  "productDetails": "Test product details"
-}
+------MyBoundary
+Content-Disposition: form-data; name="companyName"
 
-### Get all stock register entries
-GET {{baseUrl}}/stock-registers
-Authorization: Bearer {{userToken}}
+Company With File Update
+------MyBoundary
+Content-Disposition: form-data; name="totalAmount"
 
-### Get stock register entry by ID
-GET {{baseUrl}}/stock-registers/{{newStockRegisterId}}
-Authorization: Bearer {{userToken}}
+249.99
+------MyBoundary
+Content-Disposition: form-data; name="purchaseDate" # Include required fields
 
-### Update stock register entry
-PUT {{baseUrl}}/stock-registers/{{newStockRegisterId}}
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
+2024-05-22T13:00:00Z
+------MyBoundary
+Content-Disposition: form-data; name="vendorName"
 
-{
-  "articleName": "Updated Test Article",
-  "voucherOrBillNumber": "V-001-UPD",
-  "costRate": 1500,
-  "cgst": 150,
-  "sgst": 150,
-  "billingDate": "2025-04-23",
-  "quantity": 3,
-  "costValue": 4500,
-  "companyName": "Updated Test Company Stock",
-  "productDetails": "Updated test product details"
-}
+Vendor Updated File
+------MyBoundary
+Content-Disposition: form-data; name="address"
 
-### Delete stock register entry
-DELETE {{baseUrl}}/stock-registers/{{newStockRegisterId}}
-Authorization: Bearer {{adminToken}}
+789 File Updated St
+------MyBoundary
+Content-Disposition: form-data; name="products" # Include required fields
 
-### Upload stock register file
-POST {{baseUrl}}/stock-registers/upload
-Authorization: Bearer {{userToken}}
-Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
-
-------WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="file"; filename="test-stock.pdf"
+[{"productName": "File Update Product","quantity": 1,"price": 249.99}]
+------MyBoundary
+Content-Disposition: form-data; name="invoiceFile"; filename="dummy-invoice-updated.pdf"
 Content-Type: application/pdf
 
-< ./path/to/your/test-stock.pdf
-------WebKitFormBoundary7MA4YWxkTrZu0gW--
+< {{invoiceFilePath}} # Use same path for dummy file
+------MyBoundary--
 
-### -----------------------------
-### Search Routes
-### -----------------------------
-
-### Search invoices by company name
-POST {{baseUrl}}/search/invoice
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "companyName": "Test Company"
-}
-
-### Search invoices by vendor name
-POST {{baseUrl}}/search/invoice
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "vendorName": "Test Vendor"
-}
-
-### Search invoices by date range
-POST {{baseUrl}}/search/invoice
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "dateFrom": "2025-04-01",
-  "dateTo": "2025-04-30"
-}
-
-### Search invoices by amount range
-POST {{baseUrl}}/search/invoice
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "minAmount": 1000,
-  "maxAmount": 2000
-}
-
-### Search invoices by product name
-POST {{baseUrl}}/search/invoice
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "productName": "Test Product"
-}
-
-### Search purchase orders by vendor name
-POST {{baseUrl}}/search/purchase-order
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "vendorName": "Test Vendor"
-}
-
-### Search stock register entries by company name
-POST {{baseUrl}}/search/stock-register
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "companyName": "Test Company"
-}
-
-### Search across all document types
-POST {{baseUrl}}/search/all
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "query": "Test"
-}
-
-### Get saved searches
-GET {{baseUrl}}/saved-searches
-Authorization: Bearer {{userToken}}
-
-### Save a search
-POST {{baseUrl}}/saved-searches
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "name": "My Test Search",
-  "searchType": "invoice",
-  "criteria": {
-    "companyName": "Test Company",
-    "minAmount": 1000
-  }
-}
-
-### Execute saved search by ID
-GET {{baseUrl}}/saved-searches/execute/1
-Authorization: Bearer {{userToken}}
-
-### Delete saved search
-DELETE {{baseUrl}}/saved-searches/1
-Authorization: Bearer {{userToken}}
-
-### -----------------------------
-### Edit Request Routes
-### -----------------------------
-
-### Create edit request
-POST {{baseUrl}}/edit-requests
-Authorization: Bearer {{userToken}}
-Content-Type: application/json
-
-{
-  "documentType": "invoice",
-  "documentId": "test-invoice-001",
-  "requestDetails": "Please change the company name to 'New Company Name'",
-  "proposedChanges": {
-    "companyName": "New Company Name"
-  }
-}
-
-### Get all edit requests
-GET {{baseUrl}}/edit-requests
-Authorization: Bearer {{adminToken}}
-
-### Get edit request by ID
-GET {{baseUrl}}/edit-requests/{{editRequestId}}
-Authorization: Bearer {{adminToken}}
-
-### Approve edit request
-PUT {{baseUrl}}/edit-requests/{{editRequestId}}/approve
-Authorization: Bearer {{adminToken}}
-
-### Reject edit request
-PUT {{baseUrl}}/edit-requests/{{editRequestId}}/reject
-Authorization: Bearer {{adminToken}}
-Content-Type: application/json
-
-{
-  "rejectionReason": "Information is incorrect"
-}
-
-### Get edit request status by document ID
-GET {{baseUrl}}/edit-requests/status/invoice/test-invoice-001
-Authorization: Bearer {{userToken}}
-
-### Request edit permission for invoice
-POST {{baseUrl}}/edit-requests/invoice/invoice-id-here
-Authorization: Bearer {{authToken}}
-Content-Type: application/json
-
-{
-  "requestMessage": "Need to update invoice details"
-}
-
-### Request edit permission for purchase order
-POST {{baseUrl}}/edit-requests/purchase-order/po-id-here
-Authorization: Bearer {{authToken}}
-Content-Type: application/json
-
-{
-  "requestMessage": "Need to update purchase order details"
-}
-
-### Request edit permission for stock register
-POST {{baseUrl}}/edit-requests/stock-register/stock-id-here
-Authorization: Bearer {{authToken}}
-Content-Type: application/json
-
-{
-  "requestMessage": "Need to update stock register details"
-}
-
-### Get all edit requests (Admin only)
-GET {{baseUrl}}/edit-requests
-Authorization: Bearer {{authToken}}
-
-### Approve edit request (Admin only)
-PUT {{baseUrl}}/edit-requests/request-id-here/approve
-Authorization: Bearer {{authToken}}
-
-### Reject edit request (Admin only)
-PUT {{baseUrl}}/edit-requests/request-id-here/reject
-Authorization: Bearer {{authToken}}
-
-### Create a saved search
-POST {{baseUrl}}/searches/save
-Authorization: Bearer {{authToken}}
-Content-Type: application/json
-
-{
-  "name": "Test Search",
-  "type": "INVOICE",
-  "criteria": {
-    "companyName": "Test Company",
-    "dateFrom": "2025-04-22",
-    "dateTo": "2025-04-22"
-  }
-}
-
-### Get all saved searches
-GET {{baseUrl}}/searches/saved
-Authorization: Bearer {{authToken}}
-
-### Execute advanced search
-POST {{baseUrl}}/searches
-Authorization: Bearer {{authToken}}
-Content-Type: application/json
-
-{
-  "type": "INVOICE",
-  "criteria": {
-    "companyName": "Test Company",
-    "dateFrom": "2025-01-01",
-    "dateTo": "2025-04-22"
-  }
-}
+### END OF FILE ###

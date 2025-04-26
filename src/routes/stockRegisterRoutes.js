@@ -1,33 +1,39 @@
+// src/routes/stockRegisterRoutes.js
 import express from 'express';
-import {
-  createStockRegister,
-  getAllStockRegisters,
-  getStockRegisterById,
-  updateStockRegister,
-  deleteStockRegister,
-  requestEditPermission
-} from '../controller/stockRegisterController.js';
-import { auth } from '../middleware/auth.js';
-import upload from '../middleware/fileUpload.js';
+import { createStockRegister, getAllStockRegisters, getStockRegisterById, updateStockRegister, deleteStockRegister, requestEditPermission } from '../controller/stockRegisterController.js';
+import { auth, canEdit, adminOnly } from '../middleware/auth.js';
+import upload, { handleUploadError } from '../middleware/fileUpload.js';
 
 const router = express.Router();
 
-// Stock Register routes
-router.post('/', auth, upload.single('photo'), createStockRegister);
+const setDocumentType = (docType) => (req, res, next) => {
+    req.params.documentType = docType;
+    next();
+};
+
+// POST /api/stock-register (Create)
+router.post('/', auth, upload.single('photo'), handleUploadError, createStockRegister);
+
+// GET /api/stock-register (List)
 router.get('/', auth, getAllStockRegisters);
+
+// GET /api/stock-register/:id (Read)
 router.get('/:id', auth, getStockRegisterById);
 
-// Add document type parameter for permission checking
-router.put('/:id', auth, upload.single('photo'), (req, res, next) => {
-  req.params.documentType = 'stockRegister';
-  next();
-}, updateStockRegister);
+// PUT /api/stock-register/:id (Update)
+router.put('/:id',
+    auth,
+    setDocumentType('stockRegister'), // Use correct type name
+    canEdit,
+    upload.single('photo'),
+    handleUploadError,
+    updateStockRegister
+);
 
-router.delete('/:id', auth, (req, res, next) => {
-  req.params.documentType = 'stockRegister';
-  next();
-}, deleteStockRegister);
+// DELETE /api/stock-register/:id (Delete)
+router.delete('/:id', auth, deleteStockRegister);
 
+// POST /api/stock-register/:id/request-edit (Request Edit)
 router.post('/:id/request-edit', auth, requestEditPermission);
 
 export default router;

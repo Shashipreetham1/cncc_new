@@ -1,29 +1,37 @@
 {
-  "name": "backend",
+  "name": "cncc-backend",
   "version": "1.0.0",
+  "description": "CNCC Backend API",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node src/seeds/createAdminUser.js",
-    "prisma:reset": "npx prisma db push --force-reset"
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:push": "prisma db push",
+    "prisma:reset": "prisma db push --force-reset --accept-data-loss"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "CNCC Backend API",
   "dependencies": {
-    "@prisma/client": "^6.6.0",
-    "bcryptjs": "^3.0.2",
+    "@prisma/client": "^5.17.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.0.3",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "prisma": "^6.6.0"
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.4",
+    "prisma": "^5.17.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

@@ -1,22 +1,49 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Role } from '@prisma/client'; // Import Role enum
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'; // Use env variable in production
 
-// Register a new user (admin only)
+// Ensure JWT_SECRET is loaded
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("FATAL ERROR: JWT_SECRET environment variable is not set.");
+}
+// Use JWT expiry from env or default
+const TOKEN_EXPIRY = process.env.TOKEN_EXPIRY || '7d';
+
+// Utility to exclude fields from an object (like password)
+function exclude(user, keys) {
+  return Object.fromEntries(
+    Object.entries(user).filter(([key]) => !keys.includes(key))
+  );
+}
+
+
+// Register a new user (protected by adminOnly middleware)
 export const registerUser = async (req, res) => {
-  try {
-    const { username, password, role = 'USER' } = req.body;
+  const { username, password, role = 'USER' } = req.body; // Default role to USER
 
+  // Basic input validation
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required' });
+  }
+  if (password.length < 6) { // Example: enforce minimum password length
+    return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+  }
+   // Validate Role
+  if (!Object.values(Role).includes(role)) {
+     return res.status(400).json({ message: `Invalid role specified. Must be one of: ${Object.values(Role).join(', ')}` });
+  }
+
+  try {
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { username }
     });
 
     if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'Username is already taken' });
     }
 
     // Hash password
@@ -28,135 +55,194 @@ export const registerUser = async (req, res) => {
       data: {
         username,
         password: hashedPassword,
-        role
+        role: role // Assign role from input (USER or ADMIN)
       }
     });
 
-    res.status(201).json({
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      createdAt: user.createdAt
-    });
+    // Return created user data (excluding password)
+    const userWithoutPassword = exclude(user, ['password']);
+    res.status(201).json(userWithoutPassword);
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Registration Error:', error);
+    res.status(500).json({ message: 'Server Error during registration' });
   }
 };
 
 // Login user
 export const loginUser = async (req, res) => {
-  try {
-    const { username, password } = req.body;
+  const { username, password } = req.body;
 
-    // Find user
+  if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
+  }
+
+  try {
+    // Find user by username
     const user = await prisma.user.findUnique({
       where: { username }
     });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      // Use a generic message to avoid confirming valid usernames
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Create and sign JWT token
+    // Create JWT payload
     const payload = {
       id: user.id,
       username: user.username,
       role: user.role
     };
 
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+    // Sign JWT token with expiry from env or default
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
 
+    // Return essential user info and token
     res.json({
       id: user.id,
       username: user.username,
       role: user.role,
       token
     });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Login Error:', error);
+    res.status(500).json({ message: 'Server Error during login' });
   }
 };
 
-// Get user profile
+// Get current user profile (user identified by auth middleware)
 export const getUserProfile = async (req, res) => {
+  // req.user is populated by the 'auth' middleware
+  if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'Not authorized' }); // Should not happen if auth middleware ran
+  }
+
   try {
-    // User is already attached to req by auth middleware
-    const user = await prisma.user.findUnique({
+    // Fetch fresh data for the authenticated user, excluding password
+    const userProfile = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
         id: true,
         username: true,
         role: true,
-        createdAt: true
+        createdAt: true,
+        updatedAt: true
       }
     });
 
-    res.json(user);
+    if (!userProfile) {
+        // Should be rare if auth succeeded, but handle defensively
+        return res.status(404).json({ message: 'User profile not found' });
+    }
+
+    res.json(userProfile);
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Get Profile Error:', error);
+    res.status(500).json({ message: 'Server Error retrieving profile' });
   }
 };
 
-// Promote user to admin (admin only)
+// Promote user to admin (protected by adminOnly middleware)
 export const promoteUser = async (req, res) => {
-  try {
-    const { userId } = req.params;
+  const { userId } = req.params;
 
-    // Check if user exists
-    const user = await prisma.user.findUnique({
+  if (!userId) {
+      return res.status(400).json({ message: 'User ID parameter is required' });
+  }
+
+  try {
+    // Check if user exists before trying to promote
+    const userToPromote = await prisma.user.findUnique({
       where: { id: userId }
     });
 
-    if (!user) {
+    if (!userToPromote) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    // Prevent self-promotion/demotion via this route maybe? (optional check)
+    // if (req.user.id === userId) {
+    //   return res.status(400).json({ message: 'Cannot change your own role via this endpoint.' });
+    // }
 
     // Update user role to admin
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { role: 'ADMIN' },
-      select: {
+      select: { // Select only non-sensitive data to return
         id: true,
         username: true,
-        role: true
+        role: true,
+        updatedAt: true
       }
     });
 
     res.json({
-      message: 'User promoted to admin successfully',
+      message: `User ${updatedUser.username} promoted to admin successfully`,
       user: updatedUser
     });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Promotion Error:', error);
+    res.status(500).json({ message: 'Server Error during promotion' });
   }
 };
 
-// Get all users (admin only)
+// Get all users (protected by adminOnly middleware) - Added Pagination
 export const getAllUsers = async (req, res) => {
+  const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+
+  if (isNaN(pageNum) || pageNum < 1 || isNaN(limitNum) || limitNum < 1) {
+    return res.status(400).json({ message: 'Invalid pagination parameters (page and limit must be positive integers)' });
+  }
+
+  const skip = (pageNum - 1) * limitNum;
+  const validSortOrders = ['asc', 'desc'];
+  const orderByField = ['username', 'role', 'createdAt', 'updatedAt'].includes(sortBy) ? sortBy : 'createdAt';
+  const orderDirection = validSortOrders.includes(sortOrder.toLowerCase()) ? sortOrder.toLowerCase() : 'desc';
+
+
   try {
     const users = await prisma.user.findMany({
-      select: {
+      select: { // Exclude password hash
         id: true,
         username: true,
         role: true,
-        createdAt: true
+        createdAt: true,
+        updatedAt: true
+      },
+      skip: skip,
+      take: limitNum,
+      orderBy: {
+          [orderByField]: orderDirection
       }
     });
 
-    res.json(users);
+    const totalUsers = await prisma.user.count(); // Get total count for pagination calculation
+    const totalPages = Math.ceil(totalUsers / limitNum);
+
+    res.json({
+        users,
+        currentPage: pageNum,
+        totalPages: totalPages,
+        totalUsers: totalUsers
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Get All Users Error:', error);
+    res.status(500).json({ message: 'Server Error retrieving user list' });
   }
 };
